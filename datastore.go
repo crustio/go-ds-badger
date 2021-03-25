@@ -605,7 +605,7 @@ func (t *txn) get(key ds.Key) ([]byte, error) {
 		return nil, err
 	}
 
-	return item.ValueCopy(nil)
+	return crustUnseal(item)
 }
 
 func (t *txn) Has(key ds.Key) (bool, error) {
@@ -644,7 +644,7 @@ func (t *txn) getSize(key ds.Key) (int, error) {
 	item, err := t.txn.Get(key.Bytes())
 	switch err {
 	case nil:
-		return int(item.ValueSize()), nil
+		return crustGetSize(item)
 	case badger.ErrKeyNotFound:
 		return -1, ds.ErrNotFound
 	default:
