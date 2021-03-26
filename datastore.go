@@ -12,6 +12,7 @@ import (
 	options "github.com/dgraph-io/badger/options"
 	ds "github.com/ipfs/go-datastore"
 	dsq "github.com/ipfs/go-datastore/query"
+	"github.com/ipfs/go-ds-badger/crust"
 	logger "github.com/ipfs/go-log/v2"
 	goprocess "github.com/jbenet/goprocess"
 )
@@ -519,6 +520,25 @@ func (t *txn) Put(key ds.Key, value []byte) error {
 }
 
 func (t *txn) put(key ds.Key, value []byte) error {
+	if ok, si := crust.TryGetSealedInfo(value); !ok {
+		// Get item
+		item, err := t.txn.Get(key.Bytes())
+		if err == badger.ErrKeyNotFound {
+			return t.txn.Set(key.Bytes(), value)
+		} else if err != nil {
+			return err
+		}
+
+		// Replace
+		return item.Value(func(data []byte) error {
+			if ok, siin := crust.TryGetSealedInfo(data); !ok {
+				return t.txn.Set(key.Bytes(), value)
+			} else {
+				return t.txn.Set(key.Bytes(), crust.MergeSealedInfo(siin, si).Bytes())
+			}
+		})
+	}
+
 	return t.txn.Set(key.Bytes(), value)
 }
 
@@ -605,7 +625,7 @@ func (t *txn) get(key ds.Key) ([]byte, error) {
 		return nil, err
 	}
 
-	return crustUnseal(item)
+	return crust.Unseal(item)
 }
 
 func (t *txn) Has(key ds.Key) (bool, error) {
@@ -644,7 +664,7 @@ func (t *txn) getSize(key ds.Key) (int, error) {
 	item, err := t.txn.Get(key.Bytes())
 	switch err {
 	case nil:
-		return crustGetSize(item)
+		return crust.GetSize(item)
 	case badger.ErrKeyNotFound:
 		return -1, ds.ErrNotFound
 	default:
