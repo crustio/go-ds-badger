@@ -1,10 +1,9 @@
 module github.com/ipfs/go-ds-badger
 
 require (
+	github.com/crustio/go-ipfs-encryptor v0.0.0-20210330062428-8a20c7948cab
 	github.com/dgraph-io/badger v1.6.2
-	github.com/ipfs/go-cid v0.0.7
 	github.com/ipfs/go-datastore v0.4.4
-	github.com/ipfs/go-ipld-format v0.2.0
 	github.com/ipfs/go-log/v2 v2.0.5
 	github.com/jbenet/goprocess v0.1.4
 )

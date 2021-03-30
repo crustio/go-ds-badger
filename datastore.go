@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
+	crust "github.com/crustio/go-ipfs-encryptor/crust"
 	badger "github.com/dgraph-io/badger"
 	options "github.com/dgraph-io/badger/options"
 	ds "github.com/ipfs/go-datastore"
 	dsq "github.com/ipfs/go-datastore/query"
-	"github.com/ipfs/go-ds-badger/crust"
 	logger "github.com/ipfs/go-log/v2"
 	goprocess "github.com/jbenet/goprocess"
 )
