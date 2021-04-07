@@ -315,7 +315,20 @@ func (d *Datastore) Get(key ds.Key) (value []byte, err error) {
 	txn := d.newImplicitTransaction(true)
 	defer txn.discard()
 
-	return txn.get(key)
+	return txn.get(key, false)
+}
+
+func (d *Datastore) GetRaw(key ds.Key) (value []byte, err error) {
+	d.closeLk.RLock()
+	defer d.closeLk.RUnlock()
+	if d.closed {
+		return nil, ErrClosed
+	}
+
+	txn := d.newImplicitTransaction(true)
+	defer txn.discard()
+
+	return txn.get(key, true)
 }
 
 func (d *Datastore) Has(key ds.Key) (bool, error) {
@@ -617,10 +630,10 @@ func (t *txn) Get(key ds.Key) ([]byte, error) {
 		return nil, ErrClosed
 	}
 
-	return t.get(key)
+	return t.get(key, false)
 }
 
-func (t *txn) get(key ds.Key) ([]byte, error) {
+func (t *txn) get(key ds.Key, isRaw bool) ([]byte, error) {
 	item, err := t.txn.Get(key.Bytes())
 	if err == badger.ErrKeyNotFound {
 		err = ds.ErrNotFound
@@ -629,7 +642,11 @@ func (t *txn) get(key ds.Key) ([]byte, error) {
 		return nil, err
 	}
 
-	return crust.Unseal(item)
+	if isRaw {
+		return item.ValueCopy(nil)
+	} else {
+		return crust.Unseal(item)
+	}
 }
 
 func (t *txn) Has(key ds.Key) (bool, error) {
