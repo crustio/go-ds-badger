@@ -641,7 +641,41 @@ func (t *txn) get(key ds.Key, isRaw bool) ([]byte, error) {
 	if isRaw {
 		return item.ValueCopy(nil)
 	} else {
-		return crust.Unseal(item)
+		value, err := item.ValueCopy(nil)
+		if err != nil {
+			return nil, err
+		}
+
+		if ok, si := crust.TryGetSealedInfo(value); ok {
+			sbsLen := len(si.Sbs)
+			if sbsLen == 0 {
+				return nil, fmt.Errorf("Sbs is empty, can't get size")
+			}
+
+			for i := 0; i < len(si.Sbs); {
+				ret, err := crust.Unseal(si.Sbs[i].Path)
+				if err != nil {
+					return nil, err
+				}
+
+				if ret == nil {
+					si.Sbs = append(si.Sbs[:i], si.Sbs[i+1:]...)
+				} else {
+					return ret, nil
+				}
+			}
+
+			if sbsLen != len(si.Sbs) {
+				err = t.txn.Set(key.Bytes(), si.Bytes())
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			return nil, fmt.Errorf("Can't get size")
+		}
+
+		return value, nil
 	}
 }
 
