@@ -534,6 +534,7 @@ func (t *txn) Put(key ds.Key, value []byte) error {
 
 func (t *txn) put(key ds.Key, value []byte) error {
 	if ok, sb := crust.TryGetSealedBlock(value); ok {
+		fmt.Printf("Sb: {path: %s, size: %d}\n", sb.Path, sb.Size)
 		// Get item
 		item, err := t.txn.Get(key.Bytes())
 		if err == badger.ErrKeyNotFound {
@@ -547,6 +548,9 @@ func (t *txn) put(key ds.Key, value []byte) error {
 			if ok, si := crust.TryGetSealedInfo(data); !ok {
 				return t.txn.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
 			} else {
+				for i := 0; i < len(si.Sbs); i++ {
+					fmt.Printf("Sbs[%d]: {path: %s, size: %d}\n", i, si.Sbs[i].Path, si.Sbs[i].Size)
+				}
 				return t.txn.Set(key.Bytes(), si.AddSealedBlock(*sb).Bytes())
 			}
 		})
