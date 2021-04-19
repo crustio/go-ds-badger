@@ -665,18 +665,23 @@ func (t *txn) get(key ds.Key, isRaw bool) ([]byte, error) {
 				if ret == nil {
 					si.Sbs = append(si.Sbs[:i], si.Sbs[i+1:]...)
 				} else {
+					if sbsLen != len(si.Sbs) {
+						err = t.txn.Set(key.Bytes(), si.Bytes())
+						if err != nil {
+							return nil, err
+						}
+					}
+
 					return ret, nil
 				}
 			}
 
-			if sbsLen != len(si.Sbs) {
-				err = t.txn.Set(key.Bytes(), si.Bytes())
-				if err != nil {
-					return nil, err
-				}
+			err = t.txn.Delete(key.Bytes())
+			if err != nil {
+				return nil, err
 			}
 
-			return nil, fmt.Errorf("Can't get size")
+			return nil, fmt.Errorf("Can't find block '%s'", key.String())
 		}
 
 		return value, nil
