@@ -312,7 +312,7 @@ func (d *Datastore) Get(key ds.Key) (value []byte, err error) {
 		return nil, ErrClosed
 	}
 
-	txn := d.newImplicitTransaction(true)
+	txn := d.newImplicitTransaction(false)
 	defer txn.discard()
 
 	return txn.get(key, false)
