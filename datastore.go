@@ -670,6 +670,11 @@ func (t *txn) get(key ds.Key, isRaw bool) ([]byte, error) {
 						if err != nil {
 							return nil, err
 						}
+
+						err = t.txn.Commit()
+						if err != nil {
+							return nil, err
+						}
 					}
 
 					return ret, nil
@@ -677,6 +682,10 @@ func (t *txn) get(key ds.Key, isRaw bool) ([]byte, error) {
 			}
 
 			err = t.txn.Delete(key.Bytes())
+			if err != nil {
+				return nil, err
+			}
+			err = t.txn.Commit()
 			if err != nil {
 				return nil, err
 			}
