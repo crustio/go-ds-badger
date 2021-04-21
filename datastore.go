@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	crust "github.com/crustio/go-ipfs-encryptor/crust"
 	badger "github.com/dgraph-io/badger"
 	options "github.com/dgraph-io/badger/options"
 	ds "github.com/ipfs/go-datastore"
@@ -311,10 +312,23 @@ func (d *Datastore) Get(key ds.Key) (value []byte, err error) {
 		return nil, ErrClosed
 	}
 
+	txn := d.newImplicitTransaction(false)
+	defer txn.discard()
+
+	return txn.get(key, false)
+}
+
+func (d *Datastore) GetRaw(key ds.Key) (value []byte, err error) {
+	d.closeLk.RLock()
+	defer d.closeLk.RUnlock()
+	if d.closed {
+		return nil, ErrClosed
+	}
+
 	txn := d.newImplicitTransaction(true)
 	defer txn.discard()
 
-	return txn.get(key)
+	return txn.get(key, true)
 }
 
 func (d *Datastore) Has(key ds.Key) (bool, error) {
@@ -519,6 +533,29 @@ func (t *txn) Put(key ds.Key, value []byte) error {
 }
 
 func (t *txn) put(key ds.Key, value []byte) error {
+	if ok, sb := crust.TryGetSealedBlock(value); ok {
+		// fmt.Printf("Sb: {path: %s, size: %d}\n", sb.Path, sb.Size)
+		// Get item
+		item, err := t.txn.Get(key.Bytes())
+		if err == badger.ErrKeyNotFound {
+			return t.txn.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
+		} else if err != nil {
+			return err
+		}
+
+		// Replace
+		return item.Value(func(data []byte) error {
+			if ok, si := crust.TryGetSealedInfo(data); !ok {
+				return t.txn.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
+			} else {
+				//for i := 0; i < len(si.Sbs); i++ {
+				//	fmt.Printf("Sbs[%d]: {path: %s, size: %d}\n", i, si.Sbs[i].Path, si.Sbs[i].Size)
+				//}
+				return t.txn.Set(key.Bytes(), si.AddSealedBlock(*sb).Bytes())
+			}
+		})
+	}
+
 	return t.txn.Set(key.Bytes(), value)
 }
 
@@ -593,10 +630,10 @@ func (t *txn) Get(key ds.Key) ([]byte, error) {
 		return nil, ErrClosed
 	}
 
-	return t.get(key)
+	return t.get(key, false)
 }
 
-func (t *txn) get(key ds.Key) ([]byte, error) {
+func (t *txn) get(key ds.Key, isRaw bool) ([]byte, error) {
 	item, err := t.txn.Get(key.Bytes())
 	if err == badger.ErrKeyNotFound {
 		err = ds.ErrNotFound
@@ -605,7 +642,55 @@ func (t *txn) get(key ds.Key) ([]byte, error) {
 		return nil, err
 	}
 
-	return item.ValueCopy(nil)
+	if isRaw {
+		return item.ValueCopy(nil)
+	} else {
+		value, err := item.ValueCopy(nil)
+		if err != nil {
+			return nil, err
+		}
+		if ok, si := crust.TryGetSealedInfo(value); ok {
+			sbsLen := len(si.Sbs)
+			if sbsLen == 0 {
+				return nil, fmt.Errorf("Sbs is empty, can't get size")
+			}
+
+			var ret []byte
+			for i := 0; i < len(si.Sbs); {
+				ret, err = crust.Unseal(si.Sbs[i].Path)
+				if err != nil {
+					return nil, err
+				}
+
+				if ret == nil {
+					si.Sbs = append(si.Sbs[:i], si.Sbs[i+1:]...)
+				} else {
+					break
+				}
+			}
+
+			if sbsLen != len(si.Sbs) {
+				err = t.txn.Set(key.Bytes(), si.Bytes())
+				if err != nil {
+					return nil, err
+				}
+
+				err = t.txn.Commit()
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			if ret == nil {
+				return nil, fmt.Errorf("Can't find block '%s'", key.String())
+			} else {
+				return ret, nil
+			}
+
+		}
+
+		return value, nil
+	}
 }
 
 func (t *txn) Has(key ds.Key) (bool, error) {
@@ -644,7 +729,7 @@ func (t *txn) getSize(key ds.Key) (int, error) {
 	item, err := t.txn.Get(key.Bytes())
 	switch err {
 	case nil:
-		return int(item.ValueSize()), nil
+		return crust.GetSize(item)
 	case badger.ErrKeyNotFound:
 		return -1, ds.ErrNotFound
 	default:
