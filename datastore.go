@@ -649,15 +649,15 @@ func (t *txn) get(key ds.Key, isRaw bool) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-
 		if ok, si := crust.TryGetSealedInfo(value); ok {
 			sbsLen := len(si.Sbs)
 			if sbsLen == 0 {
 				return nil, fmt.Errorf("Sbs is empty, can't get size")
 			}
 
+			var ret []byte
 			for i := 0; i < len(si.Sbs); {
-				ret, err := crust.Unseal(si.Sbs[i].Path)
+				ret, err = crust.Unseal(si.Sbs[i].Path)
 				if err != nil {
 					return nil, err
 				}
@@ -665,32 +665,28 @@ func (t *txn) get(key ds.Key, isRaw bool) ([]byte, error) {
 				if ret == nil {
 					si.Sbs = append(si.Sbs[:i], si.Sbs[i+1:]...)
 				} else {
-					if sbsLen != len(si.Sbs) {
-						err = t.txn.Set(key.Bytes(), si.Bytes())
-						if err != nil {
-							return nil, err
-						}
-
-						err = t.txn.Commit()
-						if err != nil {
-							return nil, err
-						}
-					}
-
-					return ret, nil
+					break
 				}
 			}
 
-			err = t.txn.Delete(key.Bytes())
-			if err != nil {
-				return nil, err
-			}
-			err = t.txn.Commit()
-			if err != nil {
-				return nil, err
+			if sbsLen != len(si.Sbs) {
+				err = t.txn.Set(key.Bytes(), si.Bytes())
+				if err != nil {
+					return nil, err
+				}
+
+				err = t.txn.Commit()
+				if err != nil {
+					return nil, err
+				}
 			}
 
-			return nil, fmt.Errorf("Can't find block '%s'", key.String())
+			if ret == nil {
+				return nil, fmt.Errorf("Can't find block '%s'", key.String())
+			} else {
+				return ret, nil
+			}
+
 		}
 
 		return value, nil
