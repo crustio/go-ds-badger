@@ -1,4 +1,4 @@
-module github.com/ipfs/go-ds-badger
+module github.com/crustio/go-ds-badger
 
 require (
 	github.com/crustio/go-ipfs-encryptor v0.0.0-20210419092531-3f22dbe7ffc7
