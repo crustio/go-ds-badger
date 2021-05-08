@@ -466,6 +466,25 @@ func (b *batch) Put(key ds.Key, value []byte) error {
 }
 
 func (b *batch) put(key ds.Key, value []byte) error {
+	if ok, sb := crust.TryGetSealedBlock(value); ok {
+		fmt.Printf("Sb: {path: %s, size: %d}\n", sb.Path, sb.Size)
+		data, err := b.ds.GetRaw(key)
+		if err == badger.ErrKeyNotFound {
+			return b.writeBatch.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
+		} else if err != nil {
+			return err
+		}
+
+		if ok, si := crust.TryGetSealedInfo(data); !ok {
+			return b.writeBatch.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
+		} else {
+			for i := 0; i < len(si.Sbs); i++ {
+				fmt.Printf("Sbs[%d]: {path: %s, size: %d}\n", i, si.Sbs[i].Path, si.Sbs[i].Size)
+			}
+			return b.writeBatch.Set(key.Bytes(), si.AddSealedBlock(*sb).Bytes())
+		}
+	}
+
 	return b.writeBatch.Set(key.Bytes(), value)
 }
 
@@ -534,26 +553,22 @@ func (t *txn) Put(key ds.Key, value []byte) error {
 
 func (t *txn) put(key ds.Key, value []byte) error {
 	if ok, sb := crust.TryGetSealedBlock(value); ok {
-		// fmt.Printf("Sb: {path: %s, size: %d}\n", sb.Path, sb.Size)
-		// Get item
-		item, err := t.txn.Get(key.Bytes())
+		fmt.Printf("Sb: {path: %s, size: %d}\n", sb.Path, sb.Size)
+		data, err := t.GetRaw(key)
 		if err == badger.ErrKeyNotFound {
 			return t.txn.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
 		} else if err != nil {
 			return err
 		}
 
-		// Replace
-		return item.Value(func(data []byte) error {
-			if ok, si := crust.TryGetSealedInfo(data); !ok {
-				return t.txn.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
-			} else {
-				//for i := 0; i < len(si.Sbs); i++ {
-				//	fmt.Printf("Sbs[%d]: {path: %s, size: %d}\n", i, si.Sbs[i].Path, si.Sbs[i].Size)
-				//}
-				return t.txn.Set(key.Bytes(), si.AddSealedBlock(*sb).Bytes())
+		if ok, si := crust.TryGetSealedInfo(data); !ok {
+			return t.txn.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
+		} else {
+			for i := 0; i < len(si.Sbs); i++ {
+				fmt.Printf("Sbs[%d]: {path: %s, size: %d}\n", i, si.Sbs[i].Path, si.Sbs[i].Size)
 			}
-		})
+			return t.txn.Set(key.Bytes(), si.AddSealedBlock(*sb).Bytes())
+		}
 	}
 
 	return t.txn.Set(key.Bytes(), value)
@@ -631,6 +646,16 @@ func (t *txn) Get(key ds.Key) ([]byte, error) {
 	}
 
 	return t.get(key, false)
+}
+
+func (t *txn) GetRaw(key ds.Key) ([]byte, error) {
+	t.ds.closeLk.RLock()
+	defer t.ds.closeLk.RUnlock()
+	if t.ds.closed {
+		return nil, ErrClosed
+	}
+
+	return t.get(key, true)
 }
 
 func (t *txn) get(key ds.Key, isRaw bool) ([]byte, error) {
