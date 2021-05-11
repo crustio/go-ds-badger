@@ -754,7 +754,11 @@ func (t *txn) getSize(key ds.Key) (int, error) {
 	item, err := t.txn.Get(key.Bytes())
 	switch err {
 	case nil:
-		return crust.GetSize(item)
+		size, err := crust.GetSize(item)
+		if err == fmt.Errorf("Sbs is empty, can't get block size") {
+			err = ds.ErrNotFound
+		}
+		return size, err
 	case badger.ErrKeyNotFound:
 		return -1, ds.ErrNotFound
 	default:
