@@ -677,7 +677,7 @@ func (t *txn) get(key ds.Key, isRaw bool) ([]byte, error) {
 		if ok, si := crust.TryGetSealedInfo(value); ok {
 			sbsLen := len(si.Sbs)
 			if sbsLen == 0 {
-				return nil, fmt.Errorf("Sbs is empty, can't get size")
+				return nil, ds.ErrNotFound
 			}
 
 			var ret []byte
@@ -707,7 +707,7 @@ func (t *txn) get(key ds.Key, isRaw bool) ([]byte, error) {
 			}
 
 			if ret == nil {
-				return nil, fmt.Errorf("Can't find block '%s'", key.String())
+				return nil, ds.ErrNotFound
 			} else {
 				return ret, nil
 			}
