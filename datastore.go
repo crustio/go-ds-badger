@@ -467,7 +467,7 @@ func (b *batch) Put(key ds.Key, value []byte) error {
 
 func (b *batch) put(key ds.Key, value []byte) error {
 	if ok, sb := crust.TryGetSealedBlock(value); ok {
-		fmt.Printf("Sb: {path: %s, size: %d}\n", sb.Path, sb.Size)
+		// fmt.Printf("Sb: {path: %s, size: %d}\n", sb.Path, sb.Size)
 		data, err := b.ds.GetRaw(key)
 		if err == badger.ErrKeyNotFound {
 			return b.writeBatch.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
@@ -478,9 +478,9 @@ func (b *batch) put(key ds.Key, value []byte) error {
 		if ok, si := crust.TryGetSealedInfo(data); !ok {
 			return b.writeBatch.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
 		} else {
-			for i := 0; i < len(si.Sbs); i++ {
-				fmt.Printf("Sbs[%d]: {path: %s, size: %d}\n", i, si.Sbs[i].Path, si.Sbs[i].Size)
-			}
+			// for i := 0; i < len(si.Sbs); i++ {
+			//	fmt.Printf("Sbs[%d]: {path: %s, size: %d}\n", i, si.Sbs[i].Path, si.Sbs[i].Size)
+			// }
 			return b.writeBatch.Set(key.Bytes(), si.AddSealedBlock(*sb).Bytes())
 		}
 	}
@@ -553,7 +553,7 @@ func (t *txn) Put(key ds.Key, value []byte) error {
 
 func (t *txn) put(key ds.Key, value []byte) error {
 	if ok, sb := crust.TryGetSealedBlock(value); ok {
-		fmt.Printf("Sb: {path: %s, size: %d}\n", sb.Path, sb.Size)
+		// fmt.Printf("Sb: {path: %s, size: %d}\n", sb.Path, sb.Size)
 		data, err := t.GetRaw(key)
 		if err == badger.ErrKeyNotFound {
 			return t.txn.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
@@ -564,9 +564,9 @@ func (t *txn) put(key ds.Key, value []byte) error {
 		if ok, si := crust.TryGetSealedInfo(data); !ok {
 			return t.txn.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
 		} else {
-			for i := 0; i < len(si.Sbs); i++ {
-				fmt.Printf("Sbs[%d]: {path: %s, size: %d}\n", i, si.Sbs[i].Path, si.Sbs[i].Size)
-			}
+			// for i := 0; i < len(si.Sbs); i++ {
+			// fmt.Printf("Sbs[%d]: {path: %s, size: %d}\n", i, si.Sbs[i].Path, si.Sbs[i].Size)
+			// }
 			return t.txn.Set(key.Bytes(), si.AddSealedBlock(*sb).Bytes())
 		}
 	}
