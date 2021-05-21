@@ -469,7 +469,7 @@ func (b *batch) put(key ds.Key, value []byte) error {
 	if ok, sb := crust.TryGetSealedBlock(value); ok {
 		// fmt.Printf("Sb: {path: %s, size: %d}\n", sb.Path, sb.Size)
 		data, err := b.ds.GetRaw(key)
-		if err == badger.ErrKeyNotFound {
+		if err == ds.ErrNotFound {
 			return b.writeBatch.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
 		} else if err != nil {
 			return err
@@ -555,7 +555,7 @@ func (t *txn) put(key ds.Key, value []byte) error {
 	if ok, sb := crust.TryGetSealedBlock(value); ok {
 		// fmt.Printf("Sb: {path: %s, size: %d}\n", sb.Path, sb.Size)
 		data, err := t.GetRaw(key)
-		if err == badger.ErrKeyNotFound {
+		if err == ds.ErrNotFound {
 			return t.txn.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
 		} else if err != nil {
 			return err
