@@ -315,7 +315,7 @@ func (d *Datastore) Get(key ds.Key) (value []byte, err error) {
 	txn := d.newImplicitTransaction(false)
 	defer txn.discard()
 
-	return txn.get(key, false)
+	return txn.get(key)
 }
 
 func (d *Datastore) GetRaw(key ds.Key) (value []byte, err error) {
@@ -328,7 +328,7 @@ func (d *Datastore) GetRaw(key ds.Key) (value []byte, err error) {
 	txn := d.newImplicitTransaction(true)
 	defer txn.discard()
 
-	return txn.get(key, true)
+	return txn.getRaw(key)
 }
 
 func (d *Datastore) Has(key ds.Key) (bool, error) {
@@ -466,25 +466,6 @@ func (b *batch) Put(key ds.Key, value []byte) error {
 }
 
 func (b *batch) put(key ds.Key, value []byte) error {
-	if ok, sb := crust.TryGetSealedBlock(value); ok {
-		// fmt.Printf("Sb: {path: %s, size: %d}\n", sb.Path, sb.Size)
-		data, err := b.ds.GetRaw(key)
-		if err == ds.ErrNotFound {
-			return b.writeBatch.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
-		} else if err != nil {
-			return err
-		}
-
-		if ok, si := crust.TryGetSealedInfo(data); !ok {
-			return b.writeBatch.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
-		} else {
-			// for i := 0; i < len(si.Sbs); i++ {
-			//	fmt.Printf("Sbs[%d]: {path: %s, size: %d}\n", i, si.Sbs[i].Path, si.Sbs[i].Size)
-			// }
-			return b.writeBatch.Set(key.Bytes(), si.AddSealedBlock(*sb).Bytes())
-		}
-	}
-
 	return b.writeBatch.Set(key.Bytes(), value)
 }
 
@@ -554,7 +535,7 @@ func (t *txn) Put(key ds.Key, value []byte) error {
 func (t *txn) put(key ds.Key, value []byte) error {
 	if ok, sb := crust.TryGetSealedBlock(value); ok {
 		// fmt.Printf("Sb: {path: %s, size: %d}\n", sb.Path, sb.Size)
-		data, err := t.GetRaw(key)
+		data, err := t.getRaw(key)
 		if err == ds.ErrNotFound {
 			return t.txn.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
 		} else if err != nil {
@@ -645,7 +626,7 @@ func (t *txn) Get(key ds.Key) ([]byte, error) {
 		return nil, ErrClosed
 	}
 
-	return t.get(key, false)
+	return t.get(key)
 }
 
 func (t *txn) GetRaw(key ds.Key) ([]byte, error) {
@@ -655,10 +636,10 @@ func (t *txn) GetRaw(key ds.Key) ([]byte, error) {
 		return nil, ErrClosed
 	}
 
-	return t.get(key, true)
+	return t.getRaw(key)
 }
 
-func (t *txn) get(key ds.Key, isRaw bool) ([]byte, error) {
+func (t *txn) getRaw(key ds.Key) ([]byte, error) {
 	item, err := t.txn.Get(key.Bytes())
 	if err == badger.ErrKeyNotFound {
 		err = ds.ErrNotFound
@@ -667,55 +648,63 @@ func (t *txn) get(key ds.Key, isRaw bool) ([]byte, error) {
 		return nil, err
 	}
 
-	if isRaw {
-		return item.ValueCopy(nil)
-	} else {
-		value, err := item.ValueCopy(nil)
-		if err != nil {
-			return nil, err
+	return item.ValueCopy(nil)
+}
+
+func (t *txn) get(key ds.Key) ([]byte, error) {
+	item, err := t.txn.Get(key.Bytes())
+	if err == badger.ErrKeyNotFound {
+		err = ds.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	value, err := item.ValueCopy(nil)
+	if err != nil {
+		return nil, err
+	}
+	if ok, si := crust.TryGetSealedInfo(value); ok {
+		sbsLen := len(si.Sbs)
+		if sbsLen == 0 {
+			return nil, ds.ErrNotFound
 		}
-		if ok, si := crust.TryGetSealedInfo(value); ok {
-			sbsLen := len(si.Sbs)
-			if sbsLen == 0 {
-				return nil, ds.ErrNotFound
-			}
 
-			var ret []byte
-			for i := 0; i < len(si.Sbs); {
-				ret, err = crust.Unseal(si.Sbs[i].Path)
-				if err != nil {
-					return nil, err
-				}
-
-				if ret == nil {
-					si.Sbs = append(si.Sbs[:i], si.Sbs[i+1:]...)
-				} else {
-					break
-				}
-			}
-
-			if sbsLen != len(si.Sbs) {
-				err = t.txn.Set(key.Bytes(), si.Bytes())
-				if err != nil {
-					return nil, err
-				}
-
-				err = t.txn.Commit()
-				if err != nil {
-					return nil, err
-				}
+		var ret []byte
+		for i := 0; i < len(si.Sbs); {
+			ret, err = crust.Unseal(si.Sbs[i].Path)
+			if err != nil {
+				return nil, err
 			}
 
 			if ret == nil {
-				return nil, ds.ErrNotFound
+				si.Sbs = append(si.Sbs[:i], si.Sbs[i+1:]...)
 			} else {
-				return ret, nil
+				break
 			}
-
 		}
 
-		return value, nil
+		if sbsLen != len(si.Sbs) {
+			err = t.txn.Set(key.Bytes(), si.Bytes())
+			if err != nil {
+				return nil, err
+			}
+
+			err = t.txn.Commit()
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		if ret == nil {
+			return nil, ds.ErrNotFound
+		} else {
+			return ret, nil
+		}
+
 	}
+
+	return value, nil
 }
 
 func (t *txn) Has(key ds.Key) (bool, error) {
