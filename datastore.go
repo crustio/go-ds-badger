@@ -318,19 +318,6 @@ func (d *Datastore) Get(key ds.Key) (value []byte, err error) {
 	return txn.get(key)
 }
 
-func (d *Datastore) GetRaw(key ds.Key) (value []byte, err error) {
-	d.closeLk.RLock()
-	defer d.closeLk.RUnlock()
-	if d.closed {
-		return nil, ErrClosed
-	}
-
-	txn := d.newImplicitTransaction(true)
-	defer txn.discard()
-
-	return txn.getRaw(key)
-}
-
 func (d *Datastore) Has(key ds.Key) (bool, error) {
 	d.closeLk.RLock()
 	defer d.closeLk.RUnlock()
@@ -627,16 +614,6 @@ func (t *txn) Get(key ds.Key) ([]byte, error) {
 	}
 
 	return t.get(key)
-}
-
-func (t *txn) GetRaw(key ds.Key) ([]byte, error) {
-	t.ds.closeLk.RLock()
-	defer t.ds.closeLk.RUnlock()
-	if t.ds.closed {
-		return nil, ErrClosed
-	}
-
-	return t.getRaw(key)
 }
 
 func (t *txn) getRaw(key ds.Key) ([]byte, error) {
