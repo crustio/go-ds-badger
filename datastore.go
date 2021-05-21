@@ -318,6 +318,19 @@ func (d *Datastore) Get(key ds.Key) (value []byte, err error) {
 	return txn.get(key)
 }
 
+func (d *Datastore) GetRaw(key ds.Key) (value []byte, err error) {
+	d.closeLk.RLock()
+	defer d.closeLk.RUnlock()
+	if d.closed {
+		return nil, ErrClosed
+	}
+
+	txn := d.newImplicitTransaction(false)
+	defer txn.discard()
+
+	return txn.getRaw(key)
+}
+
 func (d *Datastore) Has(key ds.Key) (bool, error) {
 	d.closeLk.RLock()
 	defer d.closeLk.RUnlock()
@@ -522,7 +535,7 @@ func (t *txn) Put(key ds.Key, value []byte) error {
 func (t *txn) put(key ds.Key, value []byte) error {
 	if ok, sb := crust.TryGetSealedBlock(value); ok {
 		// fmt.Printf("Sb: {path: %s, size: %d}\n", sb.Path, sb.Size)
-		data, err := t.getRaw(key)
+		data, err := t.ds.GetRaw(key)
 		if err == ds.ErrNotFound {
 			return t.txn.Set(key.Bytes(), sb.ToSealedInfo().Bytes())
 		} else if err != nil {
@@ -662,12 +675,7 @@ func (t *txn) get(key ds.Key) ([]byte, error) {
 		}
 
 		if sbsLen != len(si.Sbs) {
-			err = t.txn.Set(key.Bytes(), si.Bytes())
-			if err != nil {
-				return nil, err
-			}
-
-			err = t.txn.Commit()
+			err = t.ds.Put(key, si.Bytes())
 			if err != nil {
 				return nil, err
 			}
