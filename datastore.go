@@ -3,6 +3,7 @@ package badger
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"runtime"
 	"strings"
 	"sync"
@@ -86,6 +87,8 @@ type Options struct {
 // DefaultOptions are the default options for the badger datastore.
 var DefaultOptions Options
 
+var localRand *rand.Rand
+
 func init() {
 	DefaultOptions = Options{
 		GcDiscardRatio: 0.2,
@@ -115,6 +118,8 @@ func init() {
 	//
 	// This does not appear to have a significant performance hit.
 	DefaultOptions.Options.MaxTableSize = 16 << 20
+
+	localRand = rand.New(rand.NewSource(time.Now().Unix()))
 }
 
 var _ ds.Datastore = (*Datastore)(nil)
@@ -660,17 +665,27 @@ func (t *txn) get(key ds.Key) ([]byte, error) {
 			return nil, ds.ErrNotFound
 		}
 
-		var ret []byte
-		for i := 0; i < len(si.Sbs); {
-			ret, err = crust.Unseal(si.Sbs[i].Path)
-			if err != nil {
-				return nil, err
-			}
+		rindex := localRand.Intn(sbsLen)
 
-			if ret == nil {
-				si.Sbs = append(si.Sbs[:i], si.Sbs[i+1:]...)
-			} else {
-				break
+		var ret []byte
+		for i := rindex; i < len(si.Sbs)+rindex; {
+			nowi := i % len(si.Sbs)
+			ret, err, code := crust.Unseal(si.Sbs[nowi].Path)
+			if err != nil {
+				switch code {
+				case 200:
+					return ret, nil
+				// Can't find
+				case 404:
+					si.Sbs = append(si.Sbs[:nowi], si.Sbs[nowi+1:]...)
+					continue
+				// Lost
+				case 410:
+					i++
+					continue
+				default:
+					return nil, err
+				}
 			}
 		}
 
