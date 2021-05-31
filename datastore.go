@@ -668,9 +668,10 @@ func (t *txn) get(key ds.Key) ([]byte, error) {
 		rindex := localRand.Intn(sbsLen)
 
 		var ret []byte
+		var code int
 		for i := rindex; i < len(si.Sbs)+rindex; {
 			nowi := i % len(si.Sbs)
-			ret, err, code := crust.Unseal(si.Sbs[nowi].Path)
+			ret, err, code = crust.Unseal(si.Sbs[nowi].Path)
 			if err != nil {
 				switch code {
 				case 200:
