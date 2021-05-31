@@ -686,6 +686,8 @@ func (t *txn) get(key ds.Key) ([]byte, error) {
 				default:
 					return nil, err
 				}
+			} else {
+				break
 			}
 		}
 
